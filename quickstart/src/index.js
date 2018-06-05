@@ -4,6 +4,7 @@ var Video = require('twilio-video');
 
 var activeRoom;
 var previewTracks;
+let videoPreviewTrack;
 var identity;
 var roomName;
 
@@ -55,7 +56,9 @@ $.getJSON('/token', function(data) {
     log("Joining room '" + roomName + "'...");
     var connectOptions = {
       name: roomName,
-      logLevel: 'debug'
+      logLevel: 'debug',
+      preferredVideoCodecs: [{ codec: 'VP8', simulcast: true }],
+      video: false
     };
 
     if (previewTracks) {
@@ -133,27 +136,53 @@ function roomJoined(room) {
     detachParticipantTracks(room.localParticipant);
     room.participants.forEach(detachParticipantTracks);
     activeRoom = null;
+    window.room = null;
     document.getElementById('button-join').style.display = 'inline';
     document.getElementById('button-leave').style.display = 'none';
   });
 }
 
 // Preview LocalParticipant's Tracks.
-document.getElementById('button-preview').onclick = function() {
-  var localTracksPromise = previewTracks
-    ? Promise.resolve(previewTracks)
-    : Video.createLocalTracks();
+// document.getElementById('button-preview').onclick = function() {
+//   var localTracksPromise = previewTracks
+//     ? Promise.resolve(previewTracks)
+//     : Video.createLocalTracks({audio: true});
+//
+//   localTracksPromise.then(function(tracks) {
+//     window.previewTracks = previewTracks = tracks;
+//     var previewContainer = document.getElementById('local-media');
+//     if (!previewContainer.querySelector('video')) {
+//       attachTracks(tracks, previewContainer);
+//     }
+//   }, function(error) {
+//     console.error('Unable to access local media', error);
+//     log('Unable to access Camera and Microphone');
+//   });
+// };
 
-  localTracksPromise.then(function(tracks) {
-    window.previewTracks = previewTracks = tracks;
-    var previewContainer = document.getElementById('local-media');
-    if (!previewContainer.querySelector('video')) {
-      attachTracks(tracks, previewContainer);
-    }
-  }, function(error) {
-    console.error('Unable to access local media', error);
-    log('Unable to access Camera and Microphone');
-  });
+document.getElementById('button-add').onclick = function() {
+  if (!room) {
+    console.warn('join room to toggle cam');
+    return;
+  }
+  if (room.localParticipant.videoTracks.size === 0) {
+    Video.createLocalVideoTrack({ name: 'camera', width: 1280, heigh: 720 }).then((videoTrack) => {
+      room.localParticipant.publishTrack(videoTrack);
+      videoPreviewTrack = videoTrack;
+      var previewContainer = document.getElementById('local-media');
+      if (!previewContainer.querySelector('video')) {
+        attachTracks([videoPreviewTrack], previewContainer);
+      }
+    });
+  } else {
+    room.localParticipant.unpublishTrack(videoPreviewTrack);
+    videoPreviewTrack.stop();
+    videoPreviewTrack = null;
+    const previewContainer = document.getElementById('local-media');
+    const videoElement = previewContainer.querySelector('video');
+    if (videoElement) videoElement.remove();
+  }
+
 };
 
 // Activity log.
